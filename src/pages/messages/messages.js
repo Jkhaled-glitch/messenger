@@ -23,7 +23,7 @@ const Messages = () => {
   const [getSideBar, setGetSideBar] = useState(false);
   // starting with change page title
   useEffect(() => {
-    document.title = "Hamidos | Messages";
+    document.title =`${process.env.REACT_APP_NAME} | Messages`
   }, []);
   // states for emoji and message
   const [message, setMessage] = useState("");

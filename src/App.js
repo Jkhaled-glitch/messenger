@@ -27,6 +27,7 @@ import User from "./pages/user/user";
 // import post details component
 import Details from "./pages/post-details/details";
 import ResetPassword from "./pages/resetPaswword/resetPassword";
+import axios from 'axios'
 
 function App() {
   // set user login status
@@ -35,23 +36,46 @@ function App() {
   // Loader content charging state
   const [isLoading, setIsLoading] = useState(true);
 
-  // set athentification to true to redirect user to home page
-  useEffect(() => {
-    const login = localStorage.getItem("user-login");
-    // if token exist authentificate user and stop loader if is loged in
-    if (login) {
-      if (login === "true") {
-        setAuthentificated(true);
-        setIsLoading(false);
-      } else {
-        setAuthentificated(false);
-        setIsLoading(false);
-      }
-    } else {
-      // if no teken registred yet redirect user to login and stop loader
-      setIsLoading(false);
+  const tokenIsValid = async (token) => {
+    try {
+      await axios.get(`${process.env.REACT_APP_SERVER_BASE_URI}/users/isUser`, {
+        headers: { 'Authorization': token }
+      });
+      return true; // Si la requête réussit, le token est valide
+    } catch (err) {
+      console.error(err);
+      localStorage.removeItem("user-login"); // Supprimer le token invalide
+      return false; // Si une erreur se produit, le token est invalide
     }
-  });
+  };
+  
+  // Utiliser un effet pour vérifier l'authentification lorsque le composant est monté
+  useEffect(() => {
+    const checkAuthentication = async () => {
+      const token = localStorage.getItem("user-login");
+  
+      if (token) {
+        if (await tokenIsValid(token)) {
+
+          // Si le token est valide, authentifier l'utilisateur
+          setAuthentificated(true);
+        } else {
+          // Si le token est invalide, déconnecter l'utilisateur et le rediriger vers la page de connexion
+          setAuthentificated(false);
+        }
+      } else {
+        // Si aucun token n'est enregistré, déconnecter l'utilisateur
+        setAuthentificated(false);
+      }
+  
+      // Arrêter le chargement une fois que l'authentification est vérifiée
+      setIsLoading(false);
+    };
+  
+    // Appeler la fonction de vérification de l'authentification
+    checkAuthentication();
+  }, []);
+  
 
   return !isLoading ? (
     <HashRouter>
@@ -80,7 +104,9 @@ function App() {
             path="/login/reset-password"
             element={authentificated ? <User /> : <ResetPassword />}
           />
-          <Route path="/posts/details/:any" element={<Details />} />
+          <Route path="/posts/details/:postId" 
+          element= {authentificated ? <Details /> : <Login />}
+          />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>

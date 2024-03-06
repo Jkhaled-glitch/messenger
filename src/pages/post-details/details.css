@@ -113,16 +113,7 @@
   position: relative;
 }
 
-.all-flex-col {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: start;
-  background-color: whitesmoke;
-  border-radius: 30px;
-  padding-left: 12px;
-  width: 90%;
-}
+
 .badge-comment {
   background-color: black;
   border-radius: 50%;
@@ -189,11 +180,28 @@
   height: 25vh !important;
   margin-bottom: 15px;
 }
+.all-flex-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: start;
+  background-color: whitesmoke;
+  border-radius: 30px;
+  padding-left: 12px;
+  width: 90%;
+  
+}
 .comment-body {
-  max-width: 90px;
+  
   text-overflow: ellipsis;
   text-wrap: wrap;
-}
+  display: flex;
+  justify-content: end;
+  width:90%;
+  }
+  .space{
+    width:10px;
+  }
 
 /* scroll behavior control */
 /* width */
