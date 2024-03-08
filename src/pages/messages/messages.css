@@ -54,6 +54,58 @@
   overflow-y: hidden;
 }
 
+.file-message {
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+.file-icon {
+  margin-right: 10px;
+}
+
+.file-icon i {
+  color: #007bff; 
+}
+
+.file-message a {
+  color: #333; 
+  text-decoration: none;
+}
+
+.file-message a:hover {
+  text-decoration: underline;
+}
+
+.url-message {
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+.url-icon {
+  margin-right: 10px;
+}
+
+.url-icon i {
+  color: #007bff; /* Couleur de l'icône d'URL */
+}
+
+.url-message a {
+  color: #333; 
+  text-decoration: none;
+}
+
+.url-message a:hover {
+  text-decoration: underline;
+}
+
+
+
 @media screen and (max-width: 765px) {
   .left-bar {
     position: relative;

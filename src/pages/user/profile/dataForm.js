@@ -70,9 +70,7 @@ const DataForm = ({user}) => {
   };
   // update user password func
   const updatePassword = async(data, event) => {
-    console.log("Updated password : ", data);
     event.preventDefault();
-    console.log("Updated infos : ", data);
     try {
         const res = await axios.put(`${process.env.REACT_APP_SERVER_BASE_URI}/users/updatePassword`,data=data, {
           headers: { Authorization: token },

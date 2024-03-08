@@ -18,12 +18,18 @@ import { NavLink } from "react-router-dom";
 // import verified icon
 import verified from "../public/images/téléchargement.png";
 
+//axios to fetch api
+import axios from 'axios'
+import calculateTimeAgo from '../../utilities/calculateTimeAgo'
 const Messages = () => {
+
+  //token 
+  const token = localStorage.getItem('user-login')
   // left side bar state
   const [getSideBar, setGetSideBar] = useState(false);
   // starting with change page title
   useEffect(() => {
-    document.title =`${process.env.REACT_APP_NAME} | Messages`
+    document.title = `${process.env.REACT_APP_NAME} | Messages`
   }, []);
   // states for emoji and message
   const [message, setMessage] = useState("");
@@ -44,13 +50,22 @@ const Messages = () => {
   const [getMessageModal, setGetMessageModal] = useState(false);
   // preview image src state
   const [fileUrl, setFileUrl] = useState("");
+  const [file, setFile] = useState(null);
   // use a state to chek if selected image is a message or profile image for reason to hide reactions aria in profile photo
   // and display them in message photo only
   const [isMessagePhoto, setIsMessagePhoto] = useState(false);
   // prevouis chat reference for reverse chats usage
   const previous = useRef(null);
-  // filter previous chat by name
 
+  const [me, setMe] = useState(null);
+  const [conversations, setConversations] = useState([]);
+  const [friends, setFriends] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [participant, setParticipant] = useState(null);
+  const [selectedConversation, setSelectedConversation] = useState(null);
+
+  // filter previous chat by name
   const filterUsersByName = (e) => {
     const input_value = e.target.value;
     const chats = document.querySelectorAll(".chat");
@@ -166,6 +181,7 @@ const Messages = () => {
     if (selectedFile) {
       setFileUrl(objectUrl);
       setGetMessageModal(true);
+      setFile(selectedFile)
     }
   };
   // get hidden a for downloading image
@@ -178,15 +194,106 @@ const Messages = () => {
     }
   };
 
+  const isURL = (str) => {
+    const pattern = /^(https?|ftp):\/\/[^\s/$.?#].[^\s]*$/i;
+    return pattern.test(str);
+  };
+
   // send message btn func
-  const handleMessage = (e) => {
+  const handleSendSimpleMessage = async (e) => {
     e.preventDefault();
+    let type = 'text'
+    if (isURL(message)) {
+      type = 'url';
+    }
+
     if (message.trim().length === 0) {
-      toast.error("please type a word to send");
+      toast.error("message content can not be empty");
+      return null;
     } else {
-      // handle register message logic here
+      const data = {
+        type: type,
+        content: message,
+      }
+      try {
+        const res = await axios.post(`${process.env.REACT_APP_SERVER_BASE_URI}/conversations/${selectedConversation._id}/message/send`, data,
+          {
+            headers: {
+              'Authorization': token,
+            }
+          });
+        //update message and conversation with the data
+        const updatedMessages = [res.data, ...messages]
+        const updatedConversations = conversations.map(conversation => {
+          if (conversation._id === res.data.conversationId) {
+
+            return { ...conversation, updatedAt: res.data.createdAt, messages: updatedMessages };
+          }
+          return conversation;
+        });
+
+        setSelectedConversation({ ...selectedConversation, updatedAt: res.data.createdAt, messages: updatedMessages })
+        setMessages(updatedMessages);
+        setConversations(updatedConversations);
+        setMessage('')
+      } catch (error) {
+        console.error(error);
+        toast.error(error.response.data.message);
+      }
+
     }
   };
+
+  // send file btn func
+  const handleSendFileMessage = async (e) => {
+    e.preventDefault();
+    
+    let type = 'file';
+    const mimeType = file.type;
+    if (mimeType && mimeType.startsWith('image/')) {
+      type = 'image';
+    }
+
+    const formData = new FormData();
+    formData.append('type', type); 
+   formData.append('file', file); 
+    try {
+      const res = await axios.post(`${process.env.REACT_APP_SERVER_BASE_URI}/conversations/${selectedConversation._id}/message/send`, formData,
+        {
+          headers: {
+            'Authorization': token,
+            'Content-Type': 'multipart/form-data',
+          }
+        });
+
+      //update message and conversation with the data
+      const updatedMessages = [res.data, ...messages]
+      const updatedConversations = conversations.map(conversation => {
+        if (conversation._id === res.data.conversationId) {
+
+          return { ...conversation, updatedAt: res.data.createdAt, messages: updatedMessages };
+        }
+        return conversation;
+      });
+
+      setSelectedConversation({ ...selectedConversation, updatedAt: res.data.createdAt, messages: updatedMessages })
+      setMessages(updatedMessages);
+      setConversations(updatedConversations);
+
+      //Delete file data and hide modal
+      setGetMessageModal(false)
+      setFile(null)
+      setFileUrl('')
+
+      
+
+    } catch (error) {
+      console.error(error);
+      toast.error(error.response.data.message);
+    }
+  }
+
+
 
   // emoji aria hide once user click outside
   const emojisAria = useRef(null);
@@ -201,6 +308,65 @@ const Messages = () => {
       }
     }
   };
+
+ 
+
+
+
+  useEffect(() => {
+    const getData = async () => {
+      try {
+        const resMe = await axios.get(`${process.env.REACT_APP_SERVER_BASE_URI}/users/me`, {
+          headers: { Authorization: token },
+        });
+        setMe(resMe.data);
+
+
+        const resFriends = await axios.get(`${process.env.REACT_APP_SERVER_BASE_URI}/users/getFriends`, {
+          headers: { Authorization: token },
+        });
+        setFriends(resFriends.data);
+
+
+        const resConversations = await axios.get(`${process.env.REACT_APP_SERVER_BASE_URI}/conversations/getAllConversations`, {
+          headers: { Authorization: token },
+        });
+        setConversations(resConversations.data);
+        resConversations.data.length > 0 && setSelectedConversation(resConversations.data[0]);
+        // Mise à jour des messages
+        if (resConversations.data.length > 0) {
+          const firstConversationMessages = resConversations.data[0].messages;
+          setMessages(firstConversationMessages);
+        }
+
+        // Mise à jour du participant
+        if (resConversations.data.length > 0 && resMe.data) {
+          const firstConversationParticipants = resConversations.data[0].participants;
+          const otherParticipant = firstConversationParticipants.find(participant => participant._id !== resMe.data._id);
+          setParticipant(otherParticipant);
+        }
+
+
+        setIsLoading(false);
+      } catch (error) {
+        console.log(error);
+      }
+    };
+    getData();
+  }, []);
+
+
+  if (isLoading) {
+    return (
+      <div className="details-loader">
+        <div className="bar"></div>
+        <div className="bar"></div>
+        <div className="bar"></div>
+        <div className="bar"></div>
+      </div>
+
+    )
+  }
   return (
     // messages area parent
     <div className="messages-area-parent">
@@ -239,135 +405,85 @@ const Messages = () => {
           </form>
           {/* online users start */}
           <div className="online-users">
-            {/* user 1 */}
-            <div className="user">
-              <img
-                src={userOne}
-                className="avatar shadow-5-strong"
-                alt="user"
-              />
-              <span className="user-badge"></span>
-            </div>
-            {/* user 2 */}
-            <div className="user">
-              <img
-                src={userTow}
-                className="avatar shadow-5-strong"
-                alt="user"
-              />
-              <span className="user-badge"></span>
-            </div>
-            {/* user 3 */}
-            <div className="user">
-              <img
-                src={userThree}
-                className="avatar shadow-5-strong"
-                alt="user"
-              />
-              <span className="user-badge"></span>
-            </div>
-            {/* user 4 */}
-            <div className="user">
-              <img
-                src={userFour}
-                className="avatar shadow-5-strong"
-                alt="user"
-              />
-              <span className="user-badge"></span>
-            </div>
-            {/* user 5 */}
-            <div className="user">
-              <img
-                src={userFive}
-                className="avatar shadow-5-strong"
-                alt="user"
-              />
-              <span className="user-badge"></span>
-            </div>
+            {friends.map(friend => {
+              return (
+                <div key={friend._id}
+                  className="user">
+                  <img
+                    src={friend.profile.length > 0 ? friend.profile[0] : userOne}
+                    className="avatar shadow-5-strong"
+                    alt="user"
+                  />
+                  <span className="user-badge"></span>
+                </div>
+              )
+            })}
+
           </div>
           {/* online users end */}
+
           {/* previous-chat area start */}
           <div className="previous-chat" ref={previous}>
             {/* chat 1 */}
-            <div
-              className="chat"
-              onClick={() => {
-                setGetSideBar(!getSideBar);
-              }}
-            >
-              <img
-                src={userThree}
-                className="chat-avatar shadow-4-strong p-1"
-                alt="chat"
-              />
-              <div className="chat-details w-100 text-start">
-                <div className="d-flex flex-row justify-content-between align-items-center w-100">
-                  <strong>Hamidos</strong>
-                  <mark className="rounded-5">2 min</mark>
+            {conversations.length == 0 &&
+              <div
+                className="chat"
+                onClick={() => {
+                  setGetSideBar(!getSideBar);
+                }}
+              >
+                <div className="chat-details w-100 text-start">
+                  <div className="d-flex flex-row justify-content-center align-items-center w-100 alert-danger">
+                    <p>You haven't any conversation</p>
+                  </div>
+
                 </div>
-                <p>this is what i told you last time about it</p>
               </div>
-            </div>
-            {/* chat 2 */}
-            <div className="chat">
-              <img
-                src={userFive}
-                className="chat-avatar shadow-4-strong p-1"
-                alt="chat"
-              />
-              <div className="chat-details w-100 text-start">
-                <div className="d-flex flex-row justify-content-between align-items-center w-100">
-                  <strong>Faycel</strong>
-                  <mark className="rounded-5">1 hrs</mark>
+            }
+            {conversations.map(conversation => {
+
+              const isUserSendEndMessage = conversation.messages.length > 0 && conversation.messages[0]?.sender == me._id;
+              const chatName = conversation.messages[0].sender == me._id ? conversation.participants[1].lastName + ' ' + conversation.participants[1].name : conversation.participants[0].lastName + ' ' + conversation.participants[0].name
+              const profileUrl = conversation.participants[0]._id == me._id ?
+                (conversation.participants[1].profile.lenfth > 0 ? conversation.participants[1].profile[0] : userThree) :
+                (conversation.participants[0].profile.lenfth > 0 ? conversation.participants[0].profile[0] : userThree)
+
+              return (
+                <div
+                  className="chat"
+                  onClick={() => {
+                    setGetSideBar(!getSideBar);
+                    setParticipant(conversation.participants[0]._id == me.id ? conversation.participants[1] : conversation.participants[0])
+                    setMessages(conversation.messages);
+                    setSelectedConversation(conversation);
+                  }}
+                >
+                  <img
+                    src={profileUrl}
+                    className="chat-avatar shadow-4-strong p-1"
+                    alt="chat"
+                  />
+                  <div className="chat-details w-100 text-start">
+                    <div className="d-flex flex-row justify-content-between align-items-center w-100">
+                      <strong>{chatName}</strong>
+                      <mark className="rounded-5">{calculateTimeAgo(conversation.updatedAt)}</mark>
+                    </div>
+                    <p>
+                      {isUserSendEndMessage && <b>You: </b>}
+
+                      {
+                        conversation.messages.length > 0 ? (
+                          conversation.messages[0].type === "text" || conversation.messages[0].type === "url" ?
+                            conversation.messages[0].content :
+                            conversation.messages[0].type === "image" ? 'sent an image' : 'sent a file'
+                        ) : ' '
+                      }
+                    </p>
+                  </div>
                 </div>
-                <p>this is what i told you last time about it</p>
-              </div>
-            </div>
-            {/* chat 3 */}
-            <div className="chat">
-              <img
-                src={userOne}
-                className="chat-avatar shadow-4-strong p-1"
-                alt="chat"
-              />
-              <div className="chat-details w-100 text-start">
-                <div className="d-flex flex-row justify-content-between align-items-center w-100">
-                  <strong>Khaled</strong>
-                  <mark className="rounded-5">25 min</mark>
-                </div>
-                <p>this is what i told you last time about it</p>
-              </div>
-            </div>
-            {/* chat 4 */}
-            <div className="chat">
-              <img
-                src={userTow}
-                className="chat-avatar shadow-4-strong p-1"
-                alt="chat"
-              />
-              <div className="chat-details w-100 text-start">
-                <div className="d-flex flex-row justify-content-between align-items-center w-100">
-                  <strong>Sarra</strong>
-                  <mark className="rounded-5">1 month</mark>
-                </div>
-                <p>this is what i told you last time about it</p>
-              </div>
-            </div>
-            {/* chat 5 */}
-            <div className="chat">
-              <img
-                src={userFour}
-                className="chat-avatar shadow-4-strong p-1"
-                alt="chat"
-              />
-              <div className="chat-details w-100 text-start">
-                <div className="d-flex flex-row justify-content-between align-items-center w-100">
-                  <strong>Sonia</strong>
-                  <mark className="rounded-5">2 days</mark>
-                </div>
-                <p>this is what i told you last time about it</p>
-              </div>
-            </div>
+              )
+            })}
+
           </div>
           {/* area search not found label */}
           <div
@@ -390,216 +506,143 @@ const Messages = () => {
           }
         >
           {/* chatBox header */}
-          <div className="card-header chat-header">
-            <div className="user-details">
-              <i
-                class="fas fa-arrow-left-long me-2 d-flex d-lg-none d-md-none get-side-bar"
-                onClick={() => {
-                  setGetSideBar(!getSideBar);
-                }}
-              ></i>
-              <img
-                src={userThree}
-                className="chat-avatar shadow-4-strong p-1 me-1"
-                alt="chat"
-              />
-              <div className="chat-details w-100 text-start">
-                <div className="d-flex flex-row justify-content-between align-items-center w-100">
-                  <strong className="pt-3">Hamidos</strong>
-                </div>
-                <p>online</p>
-              </div>
-            </div>
-            {/* call btns */}
-            <div className="d-flex flex-row justify-content-center align-items-center call-center shadow-2-strong">
-              <i
-                class="fas fa-phone  border-end"
-                title="Audio call"
-                onClick={() => {
-                  setShowCallSection(true);
-                }}
-              ></i>
-              <i
-                class="far fa-circle-user text-primary"
-                title="Profile"
-                onClick={getProfile}
-              ></i>
-            </div>
-          </div>
-          {/* chat box body */}
-          <div className="card-body chat-body">
-            {/* sender message */}
-            <div className="sender">
-              <span className="d-flex flex-row justify-content-center  align-items-center gap-3 message-sender-options">
-                <i class="fas fa-heart text-danger" title="Like message"></i>
+          {conversations.length > 0 &&
+            <div className="card-header chat-header">
+              <div className="user-details">
                 <i
-                  class="fas fa-reply text-primary"
-                  title="Reply message"
-                  onClick={handleReplySentMessage}
+                  class="fas fa-arrow-left-long me-2 d-flex d-lg-none d-md-none get-side-bar"
+                  onClick={() => {
+                    setGetSideBar(!getSideBar);
+                  }}
                 ></i>
+                <img
+                  src={participant.profile.length > 0 ? participant.profile[0] : userThree}
+                  className="chat-avatar shadow-4-strong p-1 me-1"
+                  alt="chat"
+                />
+                <div className="chat-details w-100 text-start">
+                  <div className="d-flex flex-row justify-content-between align-items-center w-100">
+                    <strong className="pt-3">{participant.lastName + ' ' + participant.name}</strong>
+                  </div>
+                  <p>online</p>
+                </div>
+              </div>
+              {/* call btns */}
+              <div className="d-flex flex-row justify-content-center align-items-center call-center shadow-2-strong">
                 <i
-                  class="fas fa-clone text-warning"
-                  title="Copy message"
-                  onClick={(e) => {
-                    navigator.clipboard
-                      .writeText(
-                        e.target.parentNode.parentNode.querySelector(
-                          ".initial-message"
-                        ).innerText
-                      )
-                      .then(toast.success("Message successfully copied"));
+                  class="fas fa-phone  border-end"
+                  title="Audio call"
+                  onClick={() => {
+                    setShowCallSection(true);
                   }}
                 ></i>
                 <i
-                  class="fas fa-trash-can text-danger"
-                  title="Delete message"
+                  class="far fa-circle-user text-primary"
+                  title="Profile"
+
+                  onClick={getProfile}
                 ></i>
-              </span>
-              <p className="sender-message mb-0 initial-message">
-                this is a sender message
-              </p>
-              <span className="d-flex justify-content-end align-items-center time">
-                23 min ago{" "}
-              </span>
+              </div>
             </div>
-            {/* receiver message */}
-            <div className="receiver">
-              <p className="receiver-message mb-0">
-                <span className=" message-receiver-options">
-                  <div className="options">
-                    <i
-                      class="fas fa-heart text-danger"
-                      title="Like message"
-                    ></i>
-                    <i
-                      class="fas fa-reply text-primary"
-                      title="Reply message"
-                      onClick={handleReplyReceivedMessage}
-                    ></i>
-                    <i
-                      class="fas fa-clone text-warning"
-                      title="Copy message"
-                      onClick={(e) => {
-                        navigator.clipboard
-                          .writeText(
-                            e.target.parentNode.parentNode.parentNode.querySelector(
-                              ".initial-message"
-                            ).innerText
-                          )
-                          .then(toast.success("Message successfully copied"));
-                      }}
-                    ></i>
-                    <i
-                      class="fas fa-trash-can text-danger"
-                      title="Delete message"
-                    ></i>
-                  </div>
-                </span>
-                <span className="initial-message p-0">
-                  {" "}
-                  this is a receiver message
-                </span>
-              </p>
-              <span className="d-flex justify-content-end align-items-center time">
-                2 hrs ago{" "}
-              </span>
-            </div>
-            {/* Reply himself's message */}
-            <div className="sender">
-              <p className="sender-message mb-0 d-flex flex-column justify-content-center align-items-start">
-                <div className="alert alert-success border-green p-1 mb-0">
-                  <div className="d-flex flex-row justify-content-between align-items-center mb-2">
-                    <span className="text-success fw-bold">You</span>
-                  </div>
-                  <span>This is a sender message</span>
+          }
+          {/* chat box body */}
+          <div className="card-body chat-body">
+
+            {messages.map((message, index) => {
+              const isSender = message.sender === me._id;
+              const isTextMessage = message.type === "text";
+              const isFileMessage = message.type === "file";
+              const isImageMessage = message.type === "image";
+              const isUrlMessage = message.type === "url";
+
+              return (
+                <div key={index} className={isSender ? "sender" : "receiver"}>
+                  {isSender && (
+                    <span className="d-flex flex-row justify-content-center align-items-center gap-3 message-sender-options">
+                      <i className="fas fa-heart text-danger" title="Like message"></i>
+                      <i className="fas fa-reply text-primary" title="Reply message" onClick={isSender ? handleReplySentMessage : handleReplyReceivedMessage}></i>
+                      <i className="fas fa-clone text-warning" title="Copy message" onClick={(e) => { navigator.clipboard.writeText(message.content).then(toast.success("text or link successfully copied")); }}></i>
+                      <i className="fas fa-trash-can text-danger" title="Delete message"></i>
+                    </span>
+                  )}
+                  {isTextMessage && (
+                    <>
+                      <span className="d-flex flex-row justify-content-center  align-items-center gap-3 message-sender-options">
+                        <i class="fas fa-heart text-danger" title="Like message"></i>
+                        <i
+                          class="fas fa-reply text-primary"
+                          title="Reply message"
+                          onClick={handleReplySentMessage}
+                        ></i>
+                        <i
+                          class="fas fa-clone text-warning"
+                          title="Copy message"
+                          onClick={(e) => {
+                            navigator.clipboard
+                              .writeText(
+                                message.content
+                              )
+                              .then(toast.success("Message successfully copied"));
+                          }}
+                        ></i>
+                        <i
+                          class="fas fa-trash-can text-danger"
+                          title="Delete message"
+                        ></i>
+                      </span>
+                      <p className="sender-message mb-0 initial-message">
+                        {message.content}
+                      </p>
+                    </>
+                  )}
+                  {isFileMessage && (
+                    <div class="file-message">
+                      <span class="file-icon"><i class="fas fa-file"></i></span>
+                      <a href={message.content} download>file</a>
+                    </div>
+                  )}
+                  {isImageMessage && (
+                    <>
+                      <p
+                        className="sender-message mb-0"
+                        onClick={(e) => {
+                          setShowModal(!showModal);
+                          setModalImageSrc(
+                            e.target.parentNode.querySelector(".message-photo").src
+                          );
+                          setIsMessagePhoto(true);
+                        }}
+                      >
+                        <img
+                          src={message.content}
+                          className="message-photo"
+                          width={200}
+                          height={200}
+                          alt="message"
+                          style={{ cursor: "pointer" }}
+                        />
+                        {/* hidden a element for downloading image */}
+                        <a
+                          href={message.content}
+                          className="d-none"
+                          ref={downloadImageSRC}
+                          download={message.content}
+                        ></a>
+                      </p>
+                    </>
+                  )}
+                  {isUrlMessage && (
+                    <div class="url-message">
+                      <span class="url-icon"><i class="fas fa-link"></i></span>
+                      <a href={message.content} target="_blank">{message.content}</a>
+                    </div>
+
+                  )}
+                  <span className="d-flex justify-content-end align-items-center time">{calculateTimeAgo(message.createdAt)}</span>
                 </div>
-                <span className="ms-2">User reply himself</span>
-              </p>
-              <span className="d-flex justify-content-end align-items-center time">
-                23 min ago{" "}
-              </span>
-            </div>
-            {/* Reply receiver's message */}
-            <div className="receiver">
-              <p className="receiver-message mb-0 d-flex flex-column justify-content-center align-items-start">
-                <div className="alert alert-secondary border-green p-1 mb-0">
-                  <div className="d-flex flex-row justify-content-between align-items-center mb-2">
-                    <span className="text-success fw-bold">You</span>
-                  </div>
-                  <span>This is a sender message</span>
-                </div>
-                <span className="ms-2">User got reply from receiver </span>
-              </p>
-              <span className="d-flex justify-content-end align-items-center time">
-                2 hrs ago{" "}
-              </span>
-            </div>
-            {/* sender reply a received message */}
-            <div className="sender">
-              <p className="receiver-message mb-0 d-flex flex-column justify-content-center align-items-start">
-                <div className="alert alert-secondary border-secondary p-1 mb-0">
-                  <div className="d-flex flex-row justify-content-between align-items-center mb-2">
-                    <span className="text-secondary fw-bold">Sarra</span>
-                  </div>
-                  <span>This is a receiver message</span>
-                </div>
-                <span className="ms-2">User reply a received message </span>
-              </p>
-              <span className="d-flex justify-content-end align-items-center time">
-                23 min ago{" "}
-              </span>
-            </div>
-            {/* receiver message */}
-            <div className="receiver">
-              <p className="receiver-message mb-0">
-                this is a liked message
-                <span className="liked-message">❤️</span>
-              </p>
-              <span className="d-flex justify-content-end align-items-center time">
-                2 hrs ago{" "}
-              </span>
-            </div>
-            {/* sender message */}
-            <div className="sender">
-              <p
-                className="sender-message mb-0"
-                onClick={(e) => {
-                  setShowModal(!showModal);
-                  setModalImageSrc(
-                    e.target.parentNode.querySelector(".message-photo").src
-                  );
-                  setIsMessagePhoto(true);
-                }}
-              >
-                <img
-                  src={photo}
-                  className="message-photo"
-                  width={200}
-                  height={200}
-                  alt="message"
-                  style={{ cursor: "pointer" }}
-                />
-                {/* hidden a element for downloading image */}
-                <a
-                  href={photo}
-                  className="d-none"
-                  ref={downloadImageSRC}
-                  download={photo}
-                ></a>
-              </p>
-              <span className="d-flex justify-content-end align-items-center time">
-                23 min ago{" "}
-              </span>
-            </div>
-            {/* receiver message */}
-            <div className="receiver">
-              <p className="receiver-message mb-0">
-                this is a receiver message
-              </p>
-              <span className="d-flex justify-content-end align-items-center time">
-                2 hrs ago{" "}
-              </span>
-            </div>
+              );
+            })}
+
           </div>
           {/* chat box footer */}
           <div className="card-footer chat-footer  p-3">
@@ -679,7 +722,7 @@ const Messages = () => {
               )
             }
             {/* message form */}
-            <form className="message-form" onSubmit={handleMessage}>
+            <form className="message-form" onSubmit={(e) => handleSendSimpleMessage(e)}>
               {/* Epmty input message error handler */}
 
               <div className="d-flex flex-row justify-content-between align-items-center gap-2 icons">
@@ -755,14 +798,14 @@ const Messages = () => {
                 style={{ cursor: "pointer" }}
               >
                 <img
-                  src={userThree}
+                  src={participant.profile.length > 0 ? participant.profile[0] : userThree}
                   className="profile-avatar  shadow-4-strong p-1 me-1 mb-4"
                   alt="chat"
                   title="Preview image"
                 />
               </div>
               <p className="fw-bold fs-3  mb-0 d-flex flex-row justify-content-center align-items-center">
-                <span>Hamidos</span>
+                <span>{participant.lastName + ' ' + participant.name}</span>
                 <img src={verified} width={40} alt="verified" />
               </p>
               <div className="shadow-2 d-flex flex-row justify-content-center align-items-center p-3 rounded-5 gap-2 mb-0">
@@ -791,7 +834,7 @@ const Messages = () => {
               <div className="d-flex flex-column border-top border-dark p-2 justify-content-start align-items-start w-100">
                 <p className="fw-bold text-primary mb-0">Followers :</p>
                 <p className="mb-3">
-                  You following <span className="fw-bold">Hamidos</span>
+                  You following <span className="fw-bold">{participant.lastName + ' ' + participant.name}</span>
                 </p>
                 <p className="fw-bold text-primary mb-0">
                   Theme :{" "}
@@ -871,7 +914,7 @@ const Messages = () => {
             {/* modal header control */}
             <div className="d-flex flex-row card-header p-2 justify-content-between align-items-center mb-2 w-100">
               <span className="text-info">
-                <i class="far fa-image text-info"></i> Hamidos
+                <i class="far fa-image text-info"></i> {participant.lastName + ' ' + participant.name}
               </span>
               <i
                 class="fas fa-xmark text-danger rounded border p-2 border-danger"
@@ -888,13 +931,10 @@ const Messages = () => {
             </div>
             {/* message area */}
             <div className=" w-100 p-2">
-              <form className="image-message-form active border">
-                <input
-                  type="text"
-                  className="image-message-input"
-                  placeholder="Add caption..."
-                />
-                <button className="image-message-btn">
+              <form onSubmit={(e) => handleSendFileMessage(e)}
+                className="image-message-form active border">
+
+                <button type="submit" className="image-message-btn">
                   <i class="fas fa-arrow-up text-light"></i>
                 </button>
               </form>
@@ -914,7 +954,7 @@ const Messages = () => {
         >
           <div className="call-section-container w-100 bg-dark p-3 d-flex flex-column justify-content-center align-items-center">
             <h4 className="w-100 text-center">
-              <i class="fas fa-square-phone text-primary"></i> Hamidos
+              <i class="fas fa-square-phone text-primary"></i> {participant.lastName + ' ' + participant.name}
             </h4>
             <img
               src={userThree}

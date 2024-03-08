@@ -154,8 +154,6 @@ const User = () => {
 
   return (
     <>
-      <ToastContainer />
-
       <div className="user-container container-fluid">
         <div className="profile-content">
           <h5 className="fw-bold">
@@ -312,6 +310,7 @@ const User = () => {
           </div>
         </div>
       </div>
+      <ToastContainer style={{ zIndex: "10000000" }} />
     </>
 
   );
