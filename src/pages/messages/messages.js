@@ -21,6 +21,8 @@ import verified from "../public/images/téléchargement.png";
 //axios to fetch api
 import axios from 'axios'
 import calculateTimeAgo from '../../utilities/calculateTimeAgo'
+//socket for real time messages 
+import { io } from 'socket.io-client';
 const Messages = () => {
 
   //token 
@@ -54,16 +56,22 @@ const Messages = () => {
   // use a state to chek if selected image is a message or profile image for reason to hide reactions aria in profile photo
   // and display them in message photo only
   const [isMessagePhoto, setIsMessagePhoto] = useState(false);
+
+  //socket state
+  const [socket, setSocket] = useState(null);
+
   // prevouis chat reference for reverse chats usage
   const previous = useRef(null);
 
   const [me, setMe] = useState(null);
   const [conversations, setConversations] = useState([]);
-  const [friends, setFriends] = useState([]);
+  const [onlineUsers, setOnlineUsers] = useState([]);
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [participant, setParticipant] = useState(null);
   const [selectedConversation, setSelectedConversation] = useState(null);
+
+  
 
   // filter previous chat by name
   const filterUsersByName = (e) => {
@@ -216,25 +224,12 @@ const Messages = () => {
         content: message,
       }
       try {
-        const res = await axios.post(`${process.env.REACT_APP_SERVER_BASE_URI}/conversations/${selectedConversation._id}/message/send`, data,
+        await axios.post(`${process.env.REACT_APP_SERVER_BASE_URI}/conversations/${selectedConversation._id}/message/send`, data,
           {
             headers: {
               'Authorization': token,
             }
           });
-        //update message and conversation with the data
-        const updatedMessages = [res.data, ...messages]
-        const updatedConversations = conversations.map(conversation => {
-          if (conversation._id === res.data.conversationId) {
-
-            return { ...conversation, updatedAt: res.data.createdAt, messages: updatedMessages };
-          }
-          return conversation;
-        });
-
-        setSelectedConversation({ ...selectedConversation, updatedAt: res.data.createdAt, messages: updatedMessages })
-        setMessages(updatedMessages);
-        setConversations(updatedConversations);
         setMessage('')
       } catch (error) {
         console.error(error);
@@ -247,7 +242,7 @@ const Messages = () => {
   // send file btn func
   const handleSendFileMessage = async (e) => {
     e.preventDefault();
-    
+
     let type = 'file';
     const mimeType = file.type;
     if (mimeType && mimeType.startsWith('image/')) {
@@ -255,10 +250,10 @@ const Messages = () => {
     }
 
     const formData = new FormData();
-    formData.append('type', type); 
-   formData.append('file', file); 
+    formData.append('type', type);
+    formData.append('file', file);
     try {
-      const res = await axios.post(`${process.env.REACT_APP_SERVER_BASE_URI}/conversations/${selectedConversation._id}/message/send`, formData,
+       await axios.post(`${process.env.REACT_APP_SERVER_BASE_URI}/conversations/${selectedConversation._id}/message/send`, formData,
         {
           headers: {
             'Authorization': token,
@@ -266,26 +261,12 @@ const Messages = () => {
           }
         });
 
-      //update message and conversation with the data
-      const updatedMessages = [res.data, ...messages]
-      const updatedConversations = conversations.map(conversation => {
-        if (conversation._id === res.data.conversationId) {
-
-          return { ...conversation, updatedAt: res.data.createdAt, messages: updatedMessages };
-        }
-        return conversation;
-      });
-
-      setSelectedConversation({ ...selectedConversation, updatedAt: res.data.createdAt, messages: updatedMessages })
-      setMessages(updatedMessages);
-      setConversations(updatedConversations);
-
       //Delete file data and hide modal
       setGetMessageModal(false)
       setFile(null)
       setFileUrl('')
 
-      
+
 
     } catch (error) {
       console.error(error);
@@ -309,7 +290,7 @@ const Messages = () => {
     }
   };
 
- 
+
 
 
 
@@ -325,7 +306,7 @@ const Messages = () => {
         const resFriends = await axios.get(`${process.env.REACT_APP_SERVER_BASE_URI}/users/getFriends`, {
           headers: { Authorization: token },
         });
-        setFriends(resFriends.data);
+        setOnlineUsers(resFriends.data);
 
 
         const resConversations = await axios.get(`${process.env.REACT_APP_SERVER_BASE_URI}/conversations/getAllConversations`, {
@@ -354,6 +335,58 @@ const Messages = () => {
     };
     getData();
   }, []);
+
+  
+  useEffect(() => {
+    // Connexion au serveur Socket.IO
+    const newSocket = io(process.env.REACT_APP_SERVER_BASE_URI);
+    setSocket(newSocket);
+
+    // Nettoyage des écouteurs d'événements lors du démontage du composant
+    return () => {
+      newSocket.off('disconnect');
+    };
+  }, []);
+  
+  //receive message
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleMessage = (message) => {
+     
+      console.log(conversations.length)
+      const updatedMessages = [message, ...messages];
+      const updatedConversations = conversations.map(conversation => {
+      
+        if (conversation?._id === message.conversationId) {
+          return {
+            ...conversation,
+            updatedAt: message.createdAt,
+            messages: updatedMessages
+          };
+        }
+        return conversation;
+      });
+    
+      // Mettre à jour la conversation sélectionnée si l'ID correspond
+      if (message.conversationId === selectedConversation?._id) {
+        setSelectedConversation({
+          ...selectedConversation,
+          updatedAt: message.createdAt,
+          messages: updatedMessages
+        });
+        setMessages(updatedMessages);
+      }
+    
+      // Mettre à jour les conversations
+      setConversations(updatedConversations);
+    };
+
+    // Écoute de l'événement 'getMessage'
+    socket.on('message', handleMessage);
+    
+  }, [socket, selectedConversation]);
+
 
 
   if (isLoading) {
@@ -405,12 +438,12 @@ const Messages = () => {
           </form>
           {/* online users start */}
           <div className="online-users">
-            {friends.map(friend => {
+            {onlineUsers.map(onlineUser => {
               return (
-                <div key={friend._id}
+                <div key={onlineUser._id}
                   className="user">
                   <img
-                    src={friend.profile.length > 0 ? friend.profile[0] : userOne}
+                    src={onlineUser.profile.length > 0 ? onlineUser.profile[0] : userOne}
                     className="avatar shadow-5-strong"
                     alt="user"
                   />
@@ -770,12 +803,12 @@ const Messages = () => {
               </button>
             </form>
           </div>
-          {/* friend profile infos area start */}
+          {/* onlineUser profile infos area start */}
           <div
             className={
               showProfile
-                ? "friend-profile-section show"
-                : "friend-profile-section"
+                ? "onlineUser-profile-section show"
+                : "onlineUser-profile-section"
             }
           >
             <div className="w-100 text-start">
@@ -845,7 +878,7 @@ const Messages = () => {
               </div>
             </div>
           </div>
-          {/* friend profile infos area end */}
+          {/* onlineUser profile infos area end */}
           {/* photo modal area start */}
           <div
             className={showModal ? "photo-modal show p-2" : "photo-modal p-2"}
