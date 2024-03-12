@@ -302,7 +302,7 @@ const Messages = () => {
         });
         setMe(resMe.data);
         //publish connction status 
-        socket.emit('addNewUser', resMe.data);
+        socket &&socket.emit('addNewUser', resMe.data);
 
         const resConversations = await axios.get(`${process.env.REACT_APP_SERVER_BASE_URI}/conversations/getAllConversations`, {
           headers: { Authorization: token },
