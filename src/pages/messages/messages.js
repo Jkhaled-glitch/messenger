@@ -301,13 +301,8 @@ const Messages = () => {
           headers: { Authorization: token },
         });
         setMe(resMe.data);
-
-
-        const resFriends = await axios.get(`${process.env.REACT_APP_SERVER_BASE_URI}/users/getFriends`, {
-          headers: { Authorization: token },
-        });
-        setOnlineUsers(resFriends.data);
-
+        //publish connction status 
+        socket.emit('addNewUser', resMe.data);
 
         const resConversations = await axios.get(`${process.env.REACT_APP_SERVER_BASE_URI}/conversations/getAllConversations`, {
           headers: { Authorization: token },
@@ -334,7 +329,7 @@ const Messages = () => {
       }
     };
     getData();
-  }, []);
+  }, [socket]);
 
   
   useEffect(() => {
@@ -381,9 +376,15 @@ const Messages = () => {
       // Mettre à jour les conversations
       setConversations(updatedConversations);
     };
+    const handleOnlinesUsers = (onlinesUsers) => {
+    setOnlineUsers(onlinesUsers)
+      // Mettre à jour les conversations
+      //setConversations(updatedConversations);
+    };
 
     // Écoute de l'événement 'getMessage'
     socket.on('message', handleMessage);
+    socket.on('getOnlinesUsers', handleOnlinesUsers);
     
   }, [socket, selectedConversation]);
 
@@ -438,12 +439,12 @@ const Messages = () => {
           </form>
           {/* online users start */}
           <div className="online-users">
-            {onlineUsers.map(onlineUser => {
+            {onlineUsers.map((onlineUser) => {
               return (
-                <div key={onlineUser._id}
+                <div key={onlineUser.user._id}
                   className="user">
                   <img
-                    src={onlineUser.profile.length > 0 ? onlineUser.profile[0] : userOne}
+                    src={onlineUser.user.profile.length > 0 ? onlineUser.user.profile[0] : userOne}
                     className="avatar shadow-5-strong"
                     alt="user"
                   />
